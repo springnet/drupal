@@ -70,7 +70,16 @@ class DrupalWebTestCase {
     }
     $current_db_prefix = $db_prefix;
     $db_prefix = $this->db_prefix_original;
-    db_query("INSERT INTO {simpletest} (test_id, test_class, status, message, message_group, caller, line, file) VALUES (%d, '%s', '%s', '%s', '%s', '%s', '%s', '%s')", $this->test_id, get_class($this), $status, $message, $group, $function['function'], $function['line'], $function['file']);
+    db_insert('simpletest')->fields(array(
+      'test_id' => $this->test_id,
+    'test_class' => get_class($this), 
+    'status' => $status, 
+    'message' => substr($message, 0, 255),  // Some messages are too long for the database.
+    'message_group' => $group, 
+    'caller' => $function['function'], 
+    'line' => $function['line'], 
+    'file' => $function['file'],
+    ))->execute();
     $this->_assertions[] = array(
       'status' => $status,
       'message' => $message,
@@ -631,6 +640,7 @@ class DrupalWebTestCase {
 
     // Generate temporary prefixed database to ensure that tests have a clean starting point.
     $db_prefix = 'simpletest' . mt_rand(1000, 1000000);
+    
     include_once './includes/install.inc';
     drupal_install_system();
 
@@ -639,6 +649,12 @@ class DrupalWebTestCase {
     $modules = array_unique(array_merge(drupal_verify_profile('default', 'en'), $args));
     drupal_install_modules($modules);
 
+    // Because the schema is static cached, we need to flush
+    // it between each run.  If we don't, then it will contain
+    // stale data for the previous run's database prefix and all
+    // calls to it will fail.
+    drupal_get_schema(NULL, TRUE);
+    
     // Run default profile tasks.
     $task = 'profile';
     default_profile_tasks($task, '');
@@ -860,7 +876,7 @@ class DrupalWebTestCase {
     if ($this->parse()) {
       $edit_save = $edit;
       // Let's iterate over all the forms.
-      $forms = $this->elements->xpath('//form');
+      $forms = $this->xpath('//form');
       foreach ($forms as $form) {
         // We try to set the fields of this form as specified in $edit.
         $edit = $edit_save;
@@ -1052,6 +1068,24 @@ class DrupalWebTestCase {
   }
 
   /**
+   * Peform an xpath search on the contents of the internal browser. The search
+   * is relative to the root element (HTML tag normally) of the page.
+   *
+   * @param $xpath
+   *   The xpath string to use in the search.
+   * @return
+   *   The return value of the xpath search. For details on the xpath string
+   *   format and return values see the SimpleXML documentation.
+   *   http://us.php.net/manual/function.simplexml-element-xpath.php
+   */
+  public function xpath($xpath) {
+    if ($this->parse()) {
+      return $this->elements->xpath($xpath);
+    }
+    return FALSE;
+  }
+
+  /**
    * Get all option elements, including nested options, in a select.
    *
    * @param $element
@@ -1092,15 +1126,13 @@ class DrupalWebTestCase {
   function clickLink($label, $index = 0) {
     $url_before = $this->getUrl();
     $ret = FALSE;
-    if ($this->parse()) {
-      $urls = $this->elements->xpath('//a[text()="' . $label . '"]');
-      if (isset($urls[$index])) {
-        $url_target = $this->getAbsoluteUrl($urls[$index]['href']);
-        $curl_options = array(CURLOPT_URL => $url_target);
-        $ret = $this->curlExec($curl_options);
-      }
-      $this->assertTrue($ret, t('Clicked link !label (!url_target) from !url_before', array('!label' => $label, '!url_target' => $url_target, '!url_before' => $url_before)), t('Browser'));
+    $urls = $this->xpath('//a[text()="' . $label . '"]');
+    if (isset($urls[$index])) {
+      $url_target = $this->getAbsoluteUrl($urls[$index]['href']);
+      $curl_options = array(CURLOPT_URL => $url_target);
+      $ret = $this->curlExec($curl_options);
     }
+    $this->assertTrue($ret, t('Clicked link !label (!url_target) from !url_before', array('!label' => $label, '!url_target' => $url_target, '!url_before' => $url_before)), t('Browser'));
     return $ret;
   }
 
@@ -1306,7 +1338,7 @@ class DrupalWebTestCase {
    *   TRUE on pass, FALSE on fail.
    */
   function assertTitle($title, $message, $group = 'Other') {
-    return $this->_assert($this->parse() && $this->elements->xpath('//title[text()="' . $title . '"]'), $message, $group);
+    return $this->_assert($this->xpath('//title[text()="' . $title . '"]') !== FALSE, $message, $group);
   }
 
   /**
@@ -1324,18 +1356,17 @@ class DrupalWebTestCase {
    *   TRUE on pass, FALSE on fail.
    */
   function assertFieldByXPath($xpath, $value, $message, $group = 'Other') {
-    $fields = array();
-    if ($this->parse()) {
-      $fields = $this->elements->xpath($xpath);
-    }
+    $fields = $this->xpath($xpath);
 
     // If value specified then check array for match.
     $found = TRUE;
     if ($value) {
       $found = FALSE;
-      foreach ($fields as $field) {
-        if ($field['value'] == $value) {
-          $found = TRUE;
+      if ($fields) {
+        foreach ($fields as $field) {
+          if ($field['value'] == $value) {
+            $found = TRUE;
+          }
         }
       }
     }
@@ -1357,18 +1388,17 @@ class DrupalWebTestCase {
    *   TRUE on pass, FALSE on fail.
    */
   function assertNoFieldByXPath($xpath, $value, $message, $group = 'Other') {
-    $fields = array();
-    if ($this->parse()) {
-      $fields = $this->elements->xpath($xpath);
-    }
+    $fields = $this->xpath($xpath);
 
     // If value specified then check array for match.
     $found = TRUE;
     if ($value) {
       $found = FALSE;
-      foreach ($fields as $field) {
-        if ($field['value'] == $value) {
-          $found = TRUE;
+      if ($fields) {
+        foreach ($fields as $field) {
+          if ($field['value'] == $value) {
+            $found = TRUE;
+          }
         }
       }
     }
