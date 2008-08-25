@@ -292,24 +292,24 @@ function filter_formats($index = NULL) {
   if (!isset($formats)) {
     $formats = array();
 
-    $query = 'SELECT * FROM {filter_formats}';
+    $query = db_select('filter_formats', 'f');
+    $query->addField('f', 'format', 'format');
+    $query->addField('f', 'name', 'name');
+    $query->addField('f', 'roles', 'roles');
+    $query->addField('f', 'cache', 'cache');
+    $query->addField('f', 'weight', 'weight');
+    $query->orderBy('weight');
 
     // Build query for selecting the format(s) based on the user's roles.
-    $args = array();
     if (!$all) {
-      $where = array();
+      $or = db_or()->condition('format', variable_get('filter_default_format', 1));
       foreach ($user->roles as $rid => $role) {
-        $where[] = "roles LIKE '%%,%d,%%'";
-        $args[] = $rid;
+        $or->condition('roles', '%'. (int)$rid .'%', 'LIKE');
       }
-      $query .= ' WHERE ' . implode(' OR ', $where) . ' OR format = %d';
-      $args[] = variable_get('filter_default_format', 1);
+      $query->condition($or);
     }
 
-    $result = db_query($query . ' ORDER by weight', $args);
-    while ($format = db_fetch_object($result)) {
-      $formats[$format->format] = $format;
-    }
+    $formats = $query->execute()->fetchAllAssoc('format');
   }
   if (isset($index)) {
     return isset($formats[$index]) ? $formats[$index] : FALSE;
@@ -916,7 +916,7 @@ function _filter_autop($text) {
  * for scripts and styles.
  */
 function filter_xss_admin($string) {
-  return filter_xss($string, array('a', 'abbr', 'acronym', 'address', 'b', 'bdo', 'big', 'blockquote', 'br', 'caption', 'cite', 'code', 'col', 'colgroup', 'dd', 'del', 'dfn', 'div', 'dl', 'dt', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img', 'ins', 'kbd', 'li', 'ol', 'p', 'param', 'pre', 'q', 'samp', 'small', 'span', 'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'tt', 'ul', 'var'));
+  return filter_xss($string, array('a', 'abbr', 'acronym', 'address', 'b', 'bdo', 'big', 'blockquote', 'br', 'caption', 'cite', 'code', 'col', 'colgroup', 'dd', 'del', 'dfn', 'div', 'dl', 'dt', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img', 'ins', 'kbd', 'li', 'ol', 'p', 'pre', 'q', 'samp', 'small', 'span', 'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'tt', 'ul', 'var'));
 }
 
 /**
