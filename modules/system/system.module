@@ -39,7 +39,7 @@ define('DRUPAL_MINIMUM_PGSQL',  '8.1');
 /**
  * Maximum age of temporary files in seconds.
  */
-define('DRUPAL_MAXIMUM_TEMP_FILE_AGE', 1440);
+define('DRUPAL_MAXIMUM_TEMP_FILE_AGE', 21600);
 
 /**
  * Implementation of hook_help().
@@ -1123,7 +1123,7 @@ function system_region_list($theme_key) {
   static $list = array();
 
   if (!array_key_exists($theme_key, $list)) {
-    $info = unserialize(db_result(db_query("SELECT info FROM {system} WHERE type = 'theme' AND name = '%s'", $theme_key)));
+    $info = unserialize(db_result(db_query("SELECT info FROM {system} WHERE type = :type AND name = :name", array(':type' => 'theme', ':name' => $theme_key))));
     $list[$theme_key] = array_map('t', $info['regions']);
   }
 
