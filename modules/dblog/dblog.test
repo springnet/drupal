@@ -210,13 +210,15 @@ class DBLogTestCase extends DrupalWebTestCase {
     // Count rows that have uids for the user.
     $count = db_result(db_query('SELECT COUNT(wid) FROM {watchdog} WHERE uid = %d', $user->uid));
     $this->assertTrue($count == 0, t('DBLog contains @count records for @name', array('@count' => $count, '@name' => $user->name)));
-    // Fetch row ids in watchdog that previously related to the deleted user.
-    $result = db_query('SELECT wid FROM {watchdog} WHERE uid = 0 AND wid IN (%s)', implode(', ', $ids));
-    unset($ids);
-    while ($row = db_fetch_array($result)) {
-      $ids[] = $row['wid'];
+
+    // Count rows in watchdog that previously related to the deleted user.
+    $select = db_select('watchdog');
+    $select->addExpression('COUNT(*)');
+    $select->condition('uid', 0);
+    if ($ids) {
+      $select->condition('wid', $ids, 'IN');
     }
-    $count_after = (isset($ids)) ? count($ids) : 0;
+    $count_after = $select->execute()->fetchField();
     $this->assertTrue($count_after == $count_before, t('DBLog contains @count records for @name that now have uid = 0', array('@count' => $count_before, '@name' => $user->name)));
     unset($ids);
     // Fetch row ids in watchdog that relate to the user.
