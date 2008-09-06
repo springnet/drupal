@@ -12,7 +12,7 @@
 function user_autocomplete($string = '') {
   $matches = array();
   if ($string) {
-    $result = db_query_range("SELECT name FROM {users} WHERE LOWER(name) LIKE LOWER('%s%%')", $string, 0, 10);
+    $result = db_query_range("SELECT name FROM {users} WHERE LOWER(name) LIKE LOWER(:name)", array(':name' => $string .'%'), 0, 10);
     while ($user = db_fetch_object($result)) {
       $matches[$user->name] = check_plain($user->name);
     }
@@ -84,7 +84,7 @@ function user_pass_reset(&$form_state, $uid, $timestamp, $hashed_pass, $action =
   else {
     // Time out, in seconds, until login URL expires. 24 hours = 86400 seconds.
     $timeout = 86400;
-    $current = time();
+    $current = $_SERVER['REQUEST_TIME'];
     // Some redundant checks for extra security ?
     if ($timestamp < $current && $account = user_load(array('uid' => $uid, 'status' => 1)) ) {
       // No time out for first time login.

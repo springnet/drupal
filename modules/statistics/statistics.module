@@ -51,17 +51,31 @@ function statistics_exit() {
     // We are counting content views.
     if ((arg(0) == 'node') && is_numeric(arg(1)) && arg(2) == '') {
       // A node has been viewed, so update the node's counters.
-      db_query('UPDATE {node_counter} SET daycount = daycount + 1, totalcount = totalcount + 1, timestamp = %d WHERE nid = %d', time(), arg(1));
-      // If we affected 0 rows, this is the first time viewing the node.
-      if (!db_affected_rows()) {
-        // We must create a new row to store counters for the new node.
-        db_query('INSERT INTO {node_counter} (nid, daycount, totalcount, timestamp) VALUES (%d, 1, 1, %d)', arg(1), time());
-      }
+      $fields = array(
+        'daycount' => 1,
+        'totalcount' => 1,
+        'nid' => arg(1),
+        'timestamp' => $_SERVER['REQUEST_TIME'],
+      );
+      db_merge('node_counter')
+        ->fields($fields)
+        ->expression('daycount', 'daycount + 1')
+        ->expression('totalcount', 'totalcount + 1')
+        ->execute();
     }
   }
   if (variable_get('statistics_enable_access_log', 0)) {
     // Log this page access.
-    db_query("INSERT INTO {accesslog} (title, path, url, hostname, uid, sid, timer, timestamp) values('%s', '%s', '%s', '%s', %d, '%s', %d, %d)", strip_tags(drupal_get_title()), $_GET['q'], referer_uri(), ip_address(), $user->uid, session_id(), timer_read('page'), time());
+    db_insert('accesslog')->fields(array(
+      'title' => strip_tags(drupal_get_title()),
+      'path' => $_GET['q'], 
+      'url' => $_SERVER['HTTP_REFERER'], 
+      'hostname' => ip_address(), 
+      'uid' => $user->uid, 
+      'sid' => session_id(), 
+      'timer' => timer_read('page'), 
+      'timestamp' => $_SERVER['REQUEST_TIME'],
+    ))->execute();
   }
 }
 
@@ -174,14 +188,14 @@ function statistics_user($op, &$edit, &$user) {
 function statistics_cron() {
   $statistics_timestamp = variable_get('statistics_day_timestamp', '');
 
-  if ((time() - $statistics_timestamp) >= 86400) {
+  if (($_SERVER['REQUEST_TIME'] - $statistics_timestamp) >= 86400) {
     // Reset day counts.
     db_query('UPDATE {node_counter} SET daycount = 0');
-    variable_set('statistics_day_timestamp', time());
+    variable_set('statistics_day_timestamp', $_SERVER['REQUEST_TIME']);
   }
 
   // Clean up expired access logs.
-  db_query('DELETE FROM {accesslog} WHERE timestamp < %d', time() - variable_get('statistics_flush_accesslog_timer', 259200));
+  db_query('DELETE FROM {accesslog} WHERE timestamp < %d', $_SERVER['REQUEST_TIME'] - variable_get('statistics_flush_accesslog_timer', 259200));
 }
 
 /**

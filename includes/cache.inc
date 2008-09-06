@@ -17,7 +17,7 @@ function cache_get($cid, $table = 'cache') {
 
   // Garbage collection necessary when enforcing a minimum cache lifetime
   $cache_flush = variable_get('cache_flush', 0);
-  if ($cache_flush && ($cache_flush + variable_get('cache_lifetime', 0) <= time())) {
+  if ($cache_flush && ($cache_flush + variable_get('cache_lifetime', 0) <= $_SERVER['REQUEST_TIME'])) {
     // Reset the variable immediately to prevent a meltdown in heavy load situations.
     variable_set('cache_flush', 0);
     // Time to flush old cache data
@@ -29,7 +29,6 @@ function cache_get($cid, $table = 'cache') {
     // If the data is permanent or we're not enforcing a minimum cache lifetime
     // always return the cached data.
     if ($cache->expire == CACHE_PERMANENT || !variable_get('cache_lifetime', 0)) {
-      $cache->data = db_decode_blob($cache->data);
       if ($cache->serialized) {
         $cache->data = unserialize($cache->data);
       }
@@ -45,7 +44,6 @@ function cache_get($cid, $table = 'cache') {
         return FALSE;
       }
       else {
-        $cache->data = db_decode_blob($cache->data);
         if ($cache->serialized) {
           $cache->data = unserialize($cache->data);
         }
@@ -101,16 +99,22 @@ function cache_get($cid, $table = 'cache') {
  *   A string containing HTTP header information for cached pages.
  */
 function cache_set($cid, $data, $table = 'cache', $expire = CACHE_PERMANENT, $headers = NULL) {
-  $serialized = 0;
+  $fields = array(
+    'serialized' => 0,
+    'created' => $_SERVER['REQUEST_TIME'],
+    'expire' => $expire,
+    'headers' => $headers,
+  );
   if (!is_string($data)) {
-    $data = serialize($data);
-    $serialized = 1;
+    $fields['data'] = serialize($data);
+    $fields['serialized'] = 1;
   }
-  $created = time();
-  db_query("UPDATE {" . $table . "} SET data = %b, created = %d, expire = %d, headers = '%s', serialized = %d WHERE cid = '%s'", $data, $created, $expire, $headers, $serialized, $cid);
-  if (!db_affected_rows()) {
-    @db_query("INSERT INTO {" . $table . "} (cid, data, created, expire, headers, serialized) VALUES ('%s', %b, %d, %d, '%s', %d)", $cid, $data, $created, $expire, $headers, $serialized);
+  else {
+    $fields['data'] = $data;
+    $fields['serialized'] = 0;
   }
+
+  db_merge($table)->key(array('cid' => $cid))->fields($fields)->execute();
 }
 
 /**
@@ -148,36 +152,36 @@ function cache_clear_all($cid = NULL, $table = NULL, $wildcard = FALSE) {
       // will be saved into the sessions table by sess_write(). We then
       // simulate that the cache was flushed for this user by not returning
       // cached data that was cached before the timestamp.
-      $user->cache = time();
+      $user->cache = $_SERVER['REQUEST_TIME'];
 
       $cache_flush = variable_get('cache_flush', 0);
       if ($cache_flush == 0) {
         // This is the first request to clear the cache, start a timer.
-        variable_set('cache_flush', time());
+        variable_set('cache_flush', $_SERVER['REQUEST_TIME']);
       }
-      else if (time() > ($cache_flush + variable_get('cache_lifetime', 0))) {
+      else if ($_SERVER['REQUEST_TIME'] > ($cache_flush + variable_get('cache_lifetime', 0))) {
         // Clear the cache for everyone, cache_flush_delay seconds have
         // passed since the first request to clear the cache.
-        db_query("DELETE FROM {" . $table . "} WHERE expire != %d AND expire < %d", CACHE_PERMANENT, time());
+        db_query("DELETE FROM {" . $table . "} WHERE expire != %d AND expire < %d", CACHE_PERMANENT, $_SERVER['REQUEST_TIME']);
         variable_set('cache_flush', 0);
       }
     }
     else {
       // No minimum cache lifetime, flush all temporary cache entries now.
-      db_query("DELETE FROM {" . $table . "} WHERE expire != %d AND expire < %d", CACHE_PERMANENT, time());
+      db_query("DELETE FROM {" . $table . "} WHERE expire != %d AND expire < %d", CACHE_PERMANENT, $_SERVER['REQUEST_TIME']);
     }
   }
   else {
     if ($wildcard) {
       if ($cid == '*') {
-        db_query("DELETE FROM {" . $table . "}");
+        db_delete($table)->execute();
       }
       else {
-        db_query("DELETE FROM {" . $table . "} WHERE cid LIKE '%s%%'", $cid);
+        db_delete($table)->condition('cid', $cid .'%', 'LIKE')->execute();
       }
     }
     else {
-      db_query("DELETE FROM {" . $table . "} WHERE cid = '%s'", $cid);
+      db_delete($table)->condition('cid', $cid)->execute();
     }
   }
 }

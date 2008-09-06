@@ -873,7 +873,7 @@ function valid_url($url, $absolute = FALSE) {
  *   The name of an event.
  */
 function flood_register_event($name) {
-  db_query("INSERT INTO {flood} (event, hostname, timestamp) VALUES ('%s', '%s', %d)", $name, ip_address(), time());
+  db_query("INSERT INTO {flood} (event, hostname, timestamp) VALUES ('%s', '%s', %d)", $name, ip_address(), $_SERVER['REQUEST_TIME']);
 }
 
 /**
@@ -890,7 +890,7 @@ function flood_register_event($name) {
  *   True if the user did not exceed the hourly threshold. False otherwise.
  */
 function flood_is_allowed($name, $threshold) {
-  $number = db_result(db_query("SELECT COUNT(*) FROM {flood} WHERE event = '%s' AND hostname = '%s' AND timestamp > %d", $name, ip_address(), time() - 3600));
+  $number = db_result(db_query("SELECT COUNT(*) FROM {flood} WHERE event = '%s' AND hostname = '%s' AND timestamp > %d", $name, ip_address(), $_SERVER['REQUEST_TIME'] - 3600));
   return ($number < $threshold ? TRUE : FALSE);
 }
 
@@ -2074,7 +2074,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
   // browser-caching. The string changes on every update or full cache
   // flush, forcing browsers to load a new copy of the files, as the
   // URL changed. Files that should not be cached (see drupal_add_js())
-  // get time() as query-string instead, to enforce reload on every
+  // get $_SERVER['REQUEST_TIME'] as query-string instead, to enforce reload on every
   // page request.
   $query_string = '?' . substr(variable_get('css_js_query_string', '0'), 0, 1);
 
@@ -2083,7 +2083,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
   // with HTML 4, we need to comment out the CDATA-tag.
   $embed_prefix = "\n<!--//--><![CDATA[//><!--\n";
   $embed_suffix = "\n//--><!]]>\n";
- 
+
   foreach ($javascript as $type => $data) {
     if (!$data) continue;
 
@@ -2101,7 +2101,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
         // Additionally, go through any remaining scripts if JS preprocessing is on and output the non-cached ones.
         foreach ($data as $path => $info) {
           if (!$info['preprocess'] || !$is_writable || !$preprocess_js) {
-            $no_preprocess[$type] .= '<script type="text/javascript"' . ($info['defer'] ? ' defer="defer"' : '') . ' src="' . base_path() . $path . ($info['cache'] ? $query_string : '?' . time()) . "\"></script>\n";
+            $no_preprocess[$type] .= '<script type="text/javascript"' . ($info['defer'] ? ' defer="defer"' : '') . ' src="' . base_path() . $path . ($info['cache'] ? $query_string : '?' . $_SERVER['REQUEST_TIME']) . "\"></script>\n";
           }
           else {
             $files[$path] = $info;
@@ -2487,6 +2487,9 @@ function _drupal_bootstrap_full() {
   fix_gpc_magic();
   // Load all enabled modules
   module_load_all();
+  // Rebuild the module hook cache
+  module_implements('', NULL, TRUE);
+
   // Let all modules take action before menu system handles the request
   // We do not want this while running update.php.
   if (!defined('MAINTENANCE_MODE') || MAINTENANCE_MODE != 'update') {
@@ -2550,7 +2553,7 @@ function drupal_cron_run() {
   $semaphore = variable_get('cron_semaphore', FALSE);
 
   if ($semaphore) {
-    if (time() - $semaphore > 3600) {
+    if ($_SERVER['REQUEST_TIME'] - $semaphore > 3600) {
       // Either cron has been running for more than an hour or the semaphore
       // was not reset due to a database error.
       watchdog('cron', 'Cron has been running for more than an hour and is most likely stuck.', array(), WATCHDOG_ERROR);
@@ -2568,13 +2571,13 @@ function drupal_cron_run() {
     register_shutdown_function('drupal_cron_cleanup');
 
     // Lock cron semaphore
-    variable_set('cron_semaphore', time());
+    variable_set('cron_semaphore', $_SERVER['REQUEST_TIME']);
 
     // Iterate through the modules calling their cron handlers (if any):
     module_invoke_all('cron');
 
     // Record cron time
-    variable_set('cron_last', time());
+    variable_set('cron_last', $_SERVER['REQUEST_TIME']);
     watchdog('cron', 'Cron run completed.', array(), WATCHDOG_NOTICE);
 
     // Release cron semaphore
@@ -2663,7 +2666,6 @@ function drupal_system_listing($mask, $directory, $key = 'name', $min_depth = 1)
   return $files;
 }
 
-
 /**
  * This dispatch function hands off structured Drupal arrays to type-specific
  * *_alter implementations. It ensures a consistent interface for all altering
@@ -2711,7 +2713,6 @@ function drupal_alter($type, &$data) {
     call_user_func_array($function, $args);
   }
 }
-
 
 /**
  * Renders HTML given a structured array tree.
@@ -3061,54 +3062,6 @@ function drupal_common_theme() {
  */
 
 /**
- * Get the schema definition of a table, or the whole database schema.
- *
- * The returned schema will include any modifications made by any
- * module that implements hook_schema_alter().
- *
- * @param $table
- *   The name of the table. If not given, the schema of all tables is returned.
- * @param $rebuild
- *   If true, the schema will be rebuilt instead of retrieved from the cache.
- */
-function drupal_get_schema($table = NULL, $rebuild = FALSE) {
-  static $schema = array();
-
-  if (empty($schema) || $rebuild) {
-    // Try to load the schema from cache.
-    if (!$rebuild && $cached = cache_get('schema')) {
-      $schema = $cached->data;
-    }
-    // Otherwise, rebuild the schema cache.
-    else {
-      $schema = array();
-      // Load the .install files to get hook_schema.
-      module_load_all_includes('install');
-
-      // Invoke hook_schema for all modules.
-      foreach (module_implements('schema') as $module) {
-        $current = module_invoke($module, 'schema');
-        _drupal_initialize_schema($module, $current);
-        $schema = array_merge($schema, $current);
-      }
-
-      drupal_alter('schema', $schema);
-      cache_set('schema', $schema);
-    }
-  }
-
-  if (!isset($table)) {
-    return $schema;
-  }
-  elseif (isset($schema[$table])) {
-    return $schema[$table];
-  }
-  else {
-    return FALSE;
-  }
-}
-
-/**
  * Create all tables that a module defines in its hook_schema().
  *
  * Note: This function does not pass the module's schema through
@@ -3153,7 +3106,9 @@ function drupal_uninstall_schema($module) {
 
   $ret = array();
   foreach ($schema as $table) {
-    db_drop_table($ret, $table['name']);
+    if (db_table_exists($table['name'])) {
+      db_drop_table($ret, $table['name']);
+    }
   }
   return $ret;
 }
