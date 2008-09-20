@@ -12,9 +12,13 @@
  * See COPYRIGHT.txt and LICENSE.txt.
  */
 
-require_once './includes/bootstrap.inc';
-drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
+/**
+ * Root directory of Drupal installation.
+ */
+define('DRUPAL_ROOT', dirname(realpath(__FILE__)));
 
+require_once DRUPAL_ROOT . '/includes/bootstrap.inc';
+drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
 $return = menu_execute_active_handler();
 
 // Menu status constants are integers; page content is a string.
