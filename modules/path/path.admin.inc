@@ -19,12 +19,14 @@ function path_admin_overview($keys = NULL) {
   $multilanguage = (module_exists('locale') || $count);
 
   if ($keys) {
-    // Replace wildcards with MySQL/PostgreSQL wildcards.
+    // Replace wildcards with PDO wildcards.
     $keys = preg_replace('!\*+!', '%', $keys);
-    $sql = "SELECT * FROM {url_alias} WHERE dst LIKE '%%%s%%'";
+    $sql = "SELECT * FROM {url_alias} WHERE dst LIKE :keys";
+    $args = array(':keys' => '%'. $keys .'%');
   }
   else {
     $sql = 'SELECT * FROM {url_alias}';
+    $args = array();
   }
   $header = array(
     array('data' => t('Alias'), 'field' => 'dst', 'sort' => 'asc'),
@@ -32,20 +34,17 @@ function path_admin_overview($keys = NULL) {
     array('data' => t('Operations'), 'colspan' => '2')
   );
   if ($multilanguage) {
-    $header[3] = $header[2];
-    $header[2] = array('data' => t('Language'), 'field' => 'language');
+    array_splice($header, 2, 0, array(array('data' => t('Language'), 'field' => 'language')));
   }
   $sql .= tablesort_sql($header);
-  $result = pager_query($sql, 50, 0 , NULL, $keys);
+  $result = pager_query($sql, 50, 0 , NULL, $args);
 
   $rows = array();
   $destination = drupal_get_destination();
   while ($data = db_fetch_object($result)) {
     $row = array(check_plain($data->dst), check_plain($data->src), l(t('edit'), "admin/build/path/edit/$data->pid", array('query' => $destination)), l(t('delete'), "admin/build/path/delete/$data->pid", array('query' => $destination)));
     if ($multilanguage) {
-      $row[4] = $row[3];
-      $row[3] = $row[2];
-      $row[2] = module_invoke('locale', 'language_name', $data->language);
+      array_splice($row, 2, 0, module_invoke('locale', 'language_name', $data->language));
     }
     $rows[] = $row;
   }
