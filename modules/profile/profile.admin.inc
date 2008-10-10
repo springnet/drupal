@@ -269,6 +269,7 @@ Unless you know what you are doing, it is highly recommended that you prefix the
   $form['fields']['autocomplete'] = array('#type' => 'checkbox',
     '#title' => t('Form will auto-complete while user is typing.'),
     '#default_value' => $edit['autocomplete'],
+    '#description' => t('For security, auto-complete will be disabled if the user does not have access to user profiles.'),
   );
   $form['fields']['required'] = array('#type' => 'checkbox',
     '#title' => t('The user must enter a value.'),
@@ -396,7 +397,7 @@ function profile_field_delete_submit($form, &$form_state) {
  */
 function profile_admin_settings_autocomplete($string) {
   $matches = array();
-  $result = db_query_range("SELECT category FROM {profile_fields} WHERE LOWER(category) LIKE LOWER('%s%%')", $string, 0, 10);
+  $result = db_query_range("SELECT category FROM {profile_fields} WHERE LOWER(category) LIKE LOWER(:category)", array(':category' => $string .'%'), 0, 10);
   while ($data = db_fetch_object($result)) {
     $matches[$data->category] = check_plain($data->category);
   }
